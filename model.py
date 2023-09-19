@@ -4,14 +4,17 @@ from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import FAISS
 from langchain.llms import CTransformers
 from langchain.chains import RetrievalQA
+from langchain.memory import ConversationBufferMemory
 import chainlit as cl
 
 DB_FAISS_PATH = 'vectorstore/db_faiss'
 
 custom_prompt_template = """Use the following pieces of information to answer the user's question.
+Try to answer solely based on the following pieces of information.
 If you don't know the answer, just say that you don't know, don't try to make up an answer.
 
 Context: {context}
+History: {history}
 Question: {question}
 
 Only return the helpful answer below and nothing else.
@@ -23,16 +26,16 @@ def set_custom_prompt():
     Prompt template for QA retrieval for each vectorstore
     """
     prompt = PromptTemplate(template=custom_prompt_template,
-                            input_variables=['context', 'question'])
+                            input_variables=["history", 'context', 'question'])
     return prompt
 
 #Retrieval QA Chain
-def retrieval_qa_chain(llm, prompt, db):
+def retrieval_qa_chain(llm, prompt, db, memory):
     qa_chain = RetrievalQA.from_chain_type(llm=llm,
                                        chain_type='stuff',
                                        retriever=db.as_retriever(search_kwargs={'k': 2}),
                                        return_source_documents=True,
-                                       chain_type_kwargs={'prompt': prompt}
+                                       chain_type_kwargs={'prompt': prompt, "memory": memory}
                                        )
     return qa_chain
 
@@ -54,7 +57,8 @@ def qa_bot():
     db = FAISS.load_local(DB_FAISS_PATH, embeddings)
     llm = load_llm()
     qa_prompt = set_custom_prompt()
-    qa = retrieval_qa_chain(llm, qa_prompt, db)
+    memory = ConversationBufferMemory(input_key="question", memory_key="history")
+    qa = retrieval_qa_chain(llm, qa_prompt, db, memory)
 
     return qa
 
